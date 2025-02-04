@@ -1,8 +1,10 @@
 package org.example;
 
+import com.google.gson.JsonObject;
 import net.sourceforge.tess4j.ITesseract;
 import net.sourceforge.tess4j.Tesseract;
 import net.sourceforge.tess4j.TesseractException;
+import org.apache.coyote.Response;
 import org.apache.poi.xwpf.usermodel.ParagraphAlignment;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
@@ -45,6 +47,17 @@ public class PdfToImageConverter {
             e.printStackTrace();
             return "Error processing PDF: " + e.getMessage();
         }
+    }
+
+    @GetMapping("/health")
+    public ResponseEntity health(){
+        JsonObject response = new JsonObject();
+        response.addProperty("status","success");
+        response.addProperty("code",200);
+        response.addProperty("message","scanned-pdf-to-word api is up. Make requests to /api/upload");
+        response.addProperty("data","[]");
+
+        return ResponseEntity.ok(response);
     }
 
     private File convertMultiPartToFile(MultipartFile file) throws IOException {
