@@ -27,10 +27,12 @@ import java.io.IOException;
 import java.lang.reflect.Array;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 @SpringBootApplication
 @RestController
@@ -41,11 +43,10 @@ public class PdfToImageConverter {
 
     public static void main(String[] args) {
         SpringApplication.run(PdfToImageConverter.class, args);
-        processImagesForOCR();
     }
 
     @PostMapping("/upload")
-    public Object uploadPdf(@RequestParam("pdfFile") MultipartFile file) {
+    public ResponseEntity uploadPdf(@RequestParam("pdfFile") MultipartFile file) {
         try {
             String fileID = "output-"+System.currentTimeMillis()+".docx";
             File pdfFile = convertMultiPartToFile(file);
@@ -73,7 +74,7 @@ public class PdfToImageConverter {
 
             response.put("data", data);
 
-            return response;
+            return ResponseEntity.status(HttpStatus.OK).body(response);
         } catch (Exception e) {
             e.printStackTrace();
 
@@ -84,8 +85,32 @@ public class PdfToImageConverter {
             errorResponse.put("message","an error occurred. please try again");
             errorResponse.put("data",null);
 
-            return errorResponse;
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
+    }
+
+    //Check if file is ready
+    @GetMapping("/check-status")
+    public ResponseEntity checkFileStatus(@RequestParam("fileID") String fileID){
+        File outputFile = new File("uploads/output_" + fileID + ".docx");
+        if(outputFile.exists()){
+            Map<String,Object> response = new HashMap<>();
+            response.put("status","success");
+            response.put("code",200);
+            response.put("message","file is ready for download");
+            //data exists
+            Map<String,Object> data = new HashMap<>();
+            data.put("download_url","/api/download?fileID="+fileID);
+            response.put("data",data);
+            return ResponseEntity.status(HttpStatus.OK).body(response);
+        }
+            //Processing
+            Map<String,Object> response = new HashMap<>();
+            response.put("status","success");
+            response.put("code",200);
+            response.put("message","file is still being processed. please wait");
+
+            return ResponseEntity.status(HttpStatus.OK).body(response);
     }
 
     @GetMapping("/health")
@@ -115,7 +140,8 @@ public class PdfToImageConverter {
             uploadsDir.mkdir();
         }
 
-        int pagesToBeProcessed = 
+        // int pagesToBeProcessed = Math.min(document.getNumberOfPages(),10); // Limit to 10 on a free tier of some sorts.
+
 
         for (int page = 0; page < document.getNumberOfPages(); ++page) {
             BufferedImage bim = pdfRenderer.renderImageWithDPI(page, 300);
@@ -126,69 +152,73 @@ public class PdfToImageConverter {
         document.close();
     }
 
-    private static void processImagesForOCR() {
+    private static void processImagesForOCR(String fileID) {
         File uploadsDir = new File("uploads");
         File[] files = uploadsDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".jpg"));
 
         if (files != null && files.length > 0) {
-            ITesseract tesseract = new Tesseract();
-            // Set the correct path to the tessdata folder
-            tesseract.setDatapath(System.getProperty("user.dir") + File.separator + "tessdata");
-            tesseract.setPageSegMode(1); // PSM_AUTO for layout analysis
-            tesseract.setOcrEngineMode(1); // Set OCR mode to LSTM
-            //tesseract.setConfigs(Arrays.asList("hocr")); // Generate hOCR output
+            // Create a list of CompletableFuture tasks for each image
+            List<CompletableFuture<Void>> futures = Arrays.stream(files)
+                    .map(imageFile -> CompletableFuture.runAsync(() -> processImage(imageFile, fileID)))
+                    .collect(Collectors.toList());
 
-            try (XWPFDocument document = new XWPFDocument()) {
-                for (File imageFile : files) {
-                    String result = tesseract.doOCR(imageFile);
+            // Wait for all tasks to complete
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
-                    if (result.isEmpty()) {
-                        System.out.println("OCR returned no text for " + imageFile.getName());
-                    } else {
-                        // Split the result into lines to analyze formatting
-                        String[] lines = result.split("\n");
-                        for (String line : lines) {
-                            XWPFParagraph paragraph = document.createParagraph();
-                            XWPFRun run = paragraph.createRun();
-
-                            // Apply formatting based on simple heuristics
-                            if (line.trim().isEmpty()) {
-                                continue; // Skip empty lines
-                            } else if (line.matches("(?i).*(\\b[A-Z]{2,}\\b).*")) {
-                                //run.setBold(true); // Set bold for potential headings
-                            }
-
-                            // Add text to the run
-                            run.setText(line.trim());
-                            run.setFontSize(12); // Set a default font size
-                            paragraph.setAlignment(ParagraphAlignment.LEFT); // Set alignment
-                        }
-                        System.out.println("Processed image: " + imageFile.getName());
-                    }
-                }
-
-                // Save the Word document
-                try (FileOutputStream out = new FileOutputStream("output.docx")) {
-                    document.write(out);
-                }
-
-                // Delete the images after processing
-                for (File imageFile : files) {
-                    if (imageFile.delete()) {
-                        System.out.println("Deleted image: " + imageFile.getName());
-                    } else {
-                        System.err.println("Failed to delete image: " + imageFile.getName());
-                    }
-                }
-            } catch (TesseractException | IOException e) {
-                System.err.println("Error during OCR processing: " + e.getMessage());
-                e.printStackTrace();
-            }
+            System.out.println("All images processed and saved.");
         } else {
             System.out.println("No images found for OCR processing.");
         }
     }
 
+    private static void processImage(File imageFile, String fileID) {
+        ITesseract tesseract = new Tesseract();
+        tesseract.setDatapath(System.getProperty("user.dir") + File.separator + "tessdata");
+        tesseract.setPageSegMode(1); // PSM_AUTO for layout analysis
+        tesseract.setOcrEngineMode(1); // Set OCR mode to LSTM
+
+        try (XWPFDocument document = new XWPFDocument()) {
+            String result = tesseract.doOCR(imageFile);
+
+            if (result.isEmpty()) {
+                System.out.println("OCR returned no text for " + imageFile.getName());
+            } else {
+                String[] lines = result.split("\n");
+                for (String line : lines) {
+                    XWPFParagraph paragraph = document.createParagraph();
+                    XWPFRun run = paragraph.createRun();
+
+                    if (line.trim().isEmpty()) {
+                        continue; // Skip empty lines
+                    } else if (line.matches("(?i).*(\\b[A-Z]{2,}\\b).*")) {
+                        //run.setBold(true); // Set bold for potential headings
+                    }
+
+                    run.setText(line.trim());
+                    run.setFontSize(12); // Set a default font size
+                    paragraph.setAlignment(ParagraphAlignment.LEFT); // Set alignment
+                }
+                System.out.println("Processed image: " + imageFile.getName());
+            }
+
+            // Save the Word document with the fileID in the name
+            String outputFileName = "output_" + fileID + ".docx";
+            try (FileOutputStream out = new FileOutputStream(outputFileName)) {
+                document.write(out);
+                System.out.println("Saved OCR results to: " + outputFileName);
+            }
+
+            // Delete the image after processing
+            if (imageFile.delete()) {
+                System.out.println("Deleted image: " + imageFile.getName());
+            } else {
+                System.err.println("Failed to delete image: " + imageFile.getName());
+            }
+        } catch (TesseractException | IOException e) {
+            System.err.println("Error during OCR processing for " + imageFile.getName() + ": " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<String> handleMaxSizeException(MaxUploadSizeExceededException exc) {
         System.err.println("File upload error: " + exc.getMessage());
