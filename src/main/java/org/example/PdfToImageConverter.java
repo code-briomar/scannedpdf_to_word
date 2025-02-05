@@ -14,6 +14,7 @@ import org.apache.pdfbox.rendering.PDFRenderer;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
@@ -45,10 +46,10 @@ public class PdfToImageConverter {
         SpringApplication.run(PdfToImageConverter.class, args);
     }
 
-    @PostMapping("/upload")
-    public ResponseEntity uploadPdf(@RequestParam("pdfFile") MultipartFile file) {
+    @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Object> uploadPdf(@RequestParam("pdfFile") MultipartFile file) {
         try {
-            String fileID = "output-"+System.currentTimeMillis()+".docx";
+            String fileID = String.valueOf(System.currentTimeMillis());
             File pdfFile = convertMultiPartToFile(file);
 
             // Run async processing
@@ -91,8 +92,10 @@ public class PdfToImageConverter {
 
     //Check if file is ready
     @GetMapping("/check-status")
-    public ResponseEntity checkFileStatus(@RequestParam("fileID") String fileID){
-        File outputFile = new File("uploads/output_" + fileID + ".docx");
+    public ResponseEntity<Object> checkFileStatus(@RequestParam("fileID") String fileID){
+        File outputFile = new File("output_" + fileID + ".docx");
+
+
         if(outputFile.exists()){
             Map<String,Object> response = new HashMap<>();
             response.put("status","success");
@@ -100,7 +103,7 @@ public class PdfToImageConverter {
             response.put("message","file is ready for download");
             //data exists
             Map<String,Object> data = new HashMap<>();
-            data.put("download_url","/api/download?fileID="+fileID);
+            data.put("download_url","/api/download?fileID="+outputFile.getName());
             response.put("data",data);
             return ResponseEntity.status(HttpStatus.OK).body(response);
         }
@@ -113,15 +116,36 @@ public class PdfToImageConverter {
             return ResponseEntity.status(HttpStatus.OK).body(response);
     }
 
+    @GetMapping("/download")
+    public ResponseEntity<Object> downloadFile(@RequestParam("fileID") String fileID) throws IOException {
+        File outputFile = new File("output_" + fileID + ".docx");
+
+        if (!outputFile.exists()) {
+            Map<String,Object> errorResponse = new HashMap<>();
+            errorResponse.put("status","error");
+            errorResponse.put("code",200);
+            errorResponse.put("message","file does not exist.");
+            errorResponse.put("data","null");
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
+        }
+
+        byte[] fileBytes = java.nio.file.Files.readAllBytes(outputFile.toPath());
+
+        return ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=" +outputFile.getName())
+                .body(fileBytes);
+    }
+
+
     @GetMapping("/health")
     public ResponseEntity health(){
-        JsonObject response = new JsonObject();
-        response.addProperty("status","success");
-        response.addProperty("code",200);
-        response.addProperty("message","scanned-pdf-to-word api is up. Make requests to /api/upload");
-        response.addProperty("data","[]");
+        Map<String,Object> response = new HashMap<>();
+        response.put("status","success");
+        response.put("code",200);
+        response.put("message","scanned-pdf-to-word api is up. Make requests to /api/upload");
+        response.put("data",null);
 
-        return ResponseEntity.ok(response);
+        return ResponseEntity.status(HttpStatus.OK).body(response);
     }
 
     private File convertMultiPartToFile(MultipartFile file) throws IOException {
