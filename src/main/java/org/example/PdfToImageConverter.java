@@ -24,12 +24,20 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.lang.reflect.Array;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @SpringBootApplication
 @RestController
 @RequestMapping("/api")
 public class PdfToImageConverter {
+
+    private static final ExecutorService executor = Executors.newFixedThreadPool(10);
 
     public static void main(String[] args) {
         SpringApplication.run(PdfToImageConverter.class, args);
@@ -37,15 +45,46 @@ public class PdfToImageConverter {
     }
 
     @PostMapping("/upload")
-    public String uploadPdf(@RequestParam("pdfFile") MultipartFile file) {
+    public Object uploadPdf(@RequestParam("pdfFile") MultipartFile file) {
         try {
+            String fileID = "output-"+System.currentTimeMillis()+".docx";
             File pdfFile = convertMultiPartToFile(file);
-            convertPdfToImage(pdfFile);
-            processImagesForOCR();
-            return "Processing complete. Check uploads directory for images and output.docx for results.";
+
+            // Run async processing
+            CompletableFuture.runAsync(()->{
+                try{
+                    convertPdfToImage(pdfFile);
+                    processImagesForOCR(fileID);
+                }catch(Exception e){
+                    //TODO:Custom error message
+                    e.printStackTrace();
+                }
+            },executor);
+
+            // Immediate Response
+            Map<String,Object> response = new HashMap<>();
+            response.put("status","success");
+            response.put("code",200);
+            response.put("message","Processing started.");
+
+            // When Data Exists
+            Map<String,Object> data = new HashMap<>();
+            data.put("fileID",fileID);
+
+            response.put("data", data);
+
+            return response;
         } catch (Exception e) {
             e.printStackTrace();
-            return "Error processing PDF: " + e.getMessage();
+
+            // Error response
+            Map<String,Object> errorResponse = new HashMap<>();
+            errorResponse.put("status","error");
+            errorResponse.put("code",500);
+            errorResponse.put("message","an error occurred. please try again");
+            errorResponse.put("data",null);
+
+            return errorResponse;
         }
     }
 
@@ -75,6 +114,8 @@ public class PdfToImageConverter {
         if (!uploadsDir.exists()) {
             uploadsDir.mkdir();
         }
+
+        int pagesToBeProcessed = 
 
         for (int page = 0; page < document.getNumberOfPages(); ++page) {
             BufferedImage bim = pdfRenderer.renderImageWithDPI(page, 300);
