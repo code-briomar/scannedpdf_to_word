@@ -1,5 +1,5 @@
 # Use a lightweight base image for the runtime
-FROM openjdk:17-slim
+FROM openjdk:20-slim
 
 # Set the working directory inside the container
 WORKDIR /app
@@ -25,7 +25,7 @@ COPY target/scannedpdf_to_word-1.0-SNAPSHOT.jar app.jar
 COPY tessdata/ tessdata/
 
 # Expose the port the application runs on
-EXPOSE 8080
+EXPOSE 6969
 
 # Define the command to run the application
 ENTRYPOINT ["java", "-jar", "app.jar"]
