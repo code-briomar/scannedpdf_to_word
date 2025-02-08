@@ -1,1 +1,2 @@
 worker: java -jar target/scannedpdf_to_word-1.0-SNAPSHOT.jar
+web: java -jar target/scannedpdf_to_word-1.0-SNAPSHOT.jar
