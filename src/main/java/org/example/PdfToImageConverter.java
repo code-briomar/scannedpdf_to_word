@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.MultipartFile;
 
+
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.File;
@@ -35,6 +36,7 @@ import java.util.stream.Collectors;
 @SpringBootApplication
 @RestController
 @RequestMapping("/api")
+@CrossOrigin(origins = "https://scanned-pdf-to-word.lomogan.africa/") // Allow frontend to access API
 public class PdfToImageConverter {
 
     private static final ExecutorService executor = Executors.newFixedThreadPool(10);
@@ -100,7 +102,7 @@ public class PdfToImageConverter {
             response.put("message","file is ready for download");
             //data exists
             Map<String,Object> data = new HashMap<>();
-            data.put("download_url","/api/download?fileID="+outputFile.getName());
+            data.put("download_url","/download?fileID="+fileID);
             response.put("data",data);
             return ResponseEntity.status(HttpStatus.OK).body(response);
         }
@@ -165,7 +167,7 @@ public class PdfToImageConverter {
             uploadsDir.mkdir();
         }
 
-         int pagesToBeProcessed = Math.min(document.getNumberOfPages(),30); // Limit to 30 on a free tier of some sorts.
+         int pagesToBeProcessed = Math.min(document.getNumberOfPages(),5); // Limit to 30 on a free tier of some sorts.
 
 
         for (int page = 0; page < pagesToBeProcessed; ++page) {
