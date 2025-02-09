@@ -52,15 +52,17 @@ public class PdfToImageConverter {
             File pdfFile = convertMultiPartToFile(file);
 
             // Run async processing
-            CompletableFuture.runAsync(()->{
-                try{
-                    convertPdfToImage(pdfFile);
-                    processImagesForOCR(fileID);
-                }catch(Exception e){
-                    //TODO:Custom error message
-                    e.printStackTrace();
-                }
-            },executor);
+//            CompletableFuture.runAsync(()->{
+//                try{
+//
+//                }catch(Exception e){
+//                    //TODO:Custom error message
+//                    e.printStackTrace();
+//                }
+//            },executor);
+
+            convertPdfToImage(pdfFile,fileID);
+
 
             // Immediate Response
             Map<String,Object> response = new HashMap<>();
@@ -157,7 +159,7 @@ public class PdfToImageConverter {
         return tempFile;
     }
 
-    private void convertPdfToImage(File pdfFile) throws IOException {
+    private void convertPdfToImage(File pdfFile, String fileID) throws IOException {
         PDDocument document = PDDocument.load(pdfFile);
         PDFRenderer pdfRenderer = new PDFRenderer(document);
         File uploadsDir = new File("uploads");
@@ -176,7 +178,10 @@ public class PdfToImageConverter {
             ImageIO.write(bim, "jpg", new File(imagePath));
         }
 
+
         document.close();
+
+        processImagesForOCR(fileID);
     }
 
     private static void processImagesForOCR(String fileID) {
