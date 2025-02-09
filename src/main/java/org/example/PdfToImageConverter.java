@@ -16,6 +16,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.MultipartFile;
@@ -34,6 +36,7 @@ import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 @SpringBootApplication
+@EnableAsync
 @RestController
 @RequestMapping("/api")
 @CrossOrigin(origins = "https://scanned-pdf-to-word.lomogan.africa/") // Allow frontend to access API
@@ -48,20 +51,16 @@ public class PdfToImageConverter {
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Object> uploadPdf(@RequestParam("pdfFile") MultipartFile file) {
         try {
-            String fileID = String.valueOf(System.currentTimeMillis());
+            String fileID = UUID.randomUUID().toString();
             File pdfFile = convertMultiPartToFile(file);
 
-            // Run async processing
-//            CompletableFuture.runAsync(()->{
-//                try{
-//
-//                }catch(Exception e){
-//                    //TODO:Custom error message
-//                    e.printStackTrace();
-//                }
-//            },executor);
-
-            convertPdfToImage(pdfFile,fileID);
+            new Thread(() -> {
+                try {
+                    convertPdfToImage(pdfFile, fileID);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }).start();
 
 
             // Immediate Response
@@ -159,32 +158,7 @@ public class PdfToImageConverter {
         return tempFile;
     }
 
-    private void convertPdfToImage(File pdfFile, String fileID) throws IOException {
-        PDDocument document = PDDocument.load(pdfFile);
-        PDFRenderer pdfRenderer = new PDFRenderer(document);
-        File uploadsDir = new File("uploads");
-
-        // Create the directory if it doesn't exist
-        if (!uploadsDir.exists()) {
-            uploadsDir.mkdir();
-        }
-
-         int pagesToBeProcessed = Math.min(document.getNumberOfPages(),5); // Limit to 30 on a free tier of some sorts.
-
-
-        for (int page = 0; page < pagesToBeProcessed; ++page) {
-            BufferedImage bim = pdfRenderer.renderImageWithDPI(page, 300);
-            String imagePath = "uploads/page-" + (page + 1) + ".jpg";
-            ImageIO.write(bim, "jpg", new File(imagePath));
-        }
-
-
-        document.close();
-
-        processImagesForOCR(fileID);
-    }
-
-    private static void processImagesForOCR(String fileID) {
+    private void processImagesForOCR(String fileID) {
         File uploadsDir = new File("uploads");
         File[] files = uploadsDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".jpg"));
 
@@ -247,6 +221,32 @@ public class PdfToImageConverter {
             System.out.println("No images found for OCR processing.");
         }
     }
+
+    private  void convertPdfToImage(File pdfFile, String fileID) throws IOException {
+        PDDocument document = PDDocument.load(pdfFile);
+        PDFRenderer pdfRenderer = new PDFRenderer(document);
+        File uploadsDir = new File("uploads");
+
+        // Create the directory if it doesn't exist
+        if (!uploadsDir.exists()) {
+            uploadsDir.mkdir();
+        }
+
+        int pagesToBeProcessed = Math.min(document.getNumberOfPages(),5); // Limit to 30 on a free tier of some sorts.
+
+
+        for (int page = 0; page < pagesToBeProcessed; ++page) {
+            BufferedImage bim = pdfRenderer.renderImageWithDPI(page, 300);
+            String imagePath = "uploads/page-" + (page + 1) + ".jpg";
+            ImageIO.write(bim, "jpg", new File(imagePath));
+        }
+
+
+        document.close();
+
+        processImagesForOCR(fileID);
+    }
+
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<String> handleMaxSizeException(MaxUploadSizeExceededException exc) {
