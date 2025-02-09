@@ -56,7 +56,8 @@ public class PdfToImageConverter {
 
             new Thread(() -> {
                 try {
-                    convertPdfToImage(pdfFile, fileID);
+                    convertPdfToImage(pdfFile);
+                    processImagesForOCR(fileID);
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
@@ -222,7 +223,7 @@ public class PdfToImageConverter {
         }
     }
 
-    private  void convertPdfToImage(File pdfFile, String fileID) throws IOException {
+    private  void convertPdfToImage(File pdfFile) throws IOException {
         PDDocument document = PDDocument.load(pdfFile);
         PDFRenderer pdfRenderer = new PDFRenderer(document);
         File uploadsDir = new File("uploads");
@@ -241,10 +242,7 @@ public class PdfToImageConverter {
             ImageIO.write(bim, "jpg", new File(imagePath));
         }
 
-
         document.close();
-
-        processImagesForOCR(fileID);
     }
 
 
