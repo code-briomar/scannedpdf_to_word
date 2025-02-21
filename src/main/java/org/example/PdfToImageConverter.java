@@ -30,6 +30,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Array;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
@@ -44,9 +45,7 @@ import java.util.stream.Collectors;
 @RequestMapping("/api")
 @CrossOrigin(origins = "https://scanned-pdf-to-word.lomogan.africa/") // Allow frontend to access API
 public class PdfToImageConverter {
-
     @Autowired
-    private VisionService visionService;
     private static final ExecutorService executor = Executors.newFixedThreadPool(10);
 
     public static void main(String[] args) {
@@ -73,6 +72,18 @@ public class PdfToImageConverter {
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Map<String,Object>> uploadPdf(@RequestParam("pdfFile") MultipartFile file) {
         try {
+            // Remove all files ending with .tmp in the root folder
+
+            Files.list(Paths.get("."))
+                 .filter(path -> path.toString().endsWith(".tmp"))
+                 .forEach(path -> {
+                     try {
+                         Files.delete(path);
+                     } catch (IOException e) {
+                         e.printStackTrace();
+                     }
+                 });
+
             String fileID = UUID.randomUUID().toString();
             File pdfFile = convertMultiPartToFile(file);
 
@@ -97,6 +108,20 @@ public class PdfToImageConverter {
             data.put("fileID",fileID);
 
             response.put("data", data);
+
+            // Create a temporary file for tracking
+            try{
+            File tempProcessingFile = new File(fileID+".tmp");
+
+            if(tempProcessingFile.createNewFile()){
+                System.out.println("Temporary Tracking File Created");
+            } else {
+                System.out.println("Temporary Tracking File Not Created");
+            }
+            }catch(IOException e){
+                System.out.println("Temporary File Not Created");
+            }
+
 
             return ResponseEntity.status(HttpStatus.OK).body(response);
         } catch (Exception e) {
@@ -131,7 +156,7 @@ public class PdfToImageConverter {
      */
     @GetMapping("/check-status")
     public ResponseEntity<Object> checkFileStatus(@RequestParam("fileID") String fileID){
-        File outputFile = new File("output_" + fileID + ".docx");
+        File outputFile = new File("output/output_" + fileID + ".docx");
 
 
         if(outputFile.exists()){
@@ -146,9 +171,9 @@ public class PdfToImageConverter {
             return ResponseEntity.status(HttpStatus.OK).body(response);
         }
 
-        //TODO::Temporary File Created During Processing ( with fileID as the name)
-        //TODO::and deleted after processing. To help differentiate processing files and
-        //TODO::none existent files
+        //Check if temp file exists
+        File tempProcessingFile = new File(fileID+".tmp");
+        if(tempProcessingFile.exists()){
             //Processing
             Map<String,Object> response = new HashMap<>();
             response.put("status","success");
@@ -156,6 +181,23 @@ public class PdfToImageConverter {
             response.put("message","file is still being processed. please wait");
 
             return ResponseEntity.status(HttpStatus.OK).body(response);
+        } else if(!tempProcessingFile.exists()) {
+            //File Does Not Exist
+            Map<String,Object> response = new HashMap<>();
+            response.put("status","error");
+            response.put("code",404);
+            response.put("message","file does not exist. upload a pdf file to get it processed.");
+
+            return ResponseEntity.status(HttpStatus.OK).body(response);
+        }
+
+        //Error occurred
+        Map<String,Object> response = new HashMap<>();
+        response.put("status","error");
+        response.put("code",500);
+        response.put("message","an issue occurred during processing. try again");
+
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
     }
 
     /**
@@ -176,18 +218,19 @@ public class PdfToImageConverter {
      */
     @GetMapping("/download")
     public ResponseEntity<Object> downloadFile(@RequestParam("fileID") String fileID) throws IOException {
-        File outputFile = new File("output_" + fileID + ".docx");
-
-        if (!outputFile.exists()) {
+        File outputFile = new File("output/output_" + fileID + ".docx");
+        File temporaryFile = new File(fileID+".tmp");
+        if (!outputFile.exists() || !temporaryFile.exists()) {
             Map<String,Object> errorResponse = new HashMap<>();
             errorResponse.put("status","error");
-            errorResponse.put("code",200);
+            errorResponse.put("code",404);
             errorResponse.put("message","file does not exist.");
             errorResponse.put("data","null");
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
         }
 
-        byte[] fileBytes = java.nio.file.Files.readAllBytes(outputFile.toPath());
+
+        byte[] fileBytes = Files.readAllBytes(outputFile.toPath());
 
         return ResponseEntity.ok()
                 .header("Content-Disposition", "attachment; filename=" +outputFile.getName())
@@ -250,10 +293,12 @@ public class PdfToImageConverter {
      * @param fileID A unique identifier for the output document file name.
      */
     private void processImagesForOCR(String fileID) {
+
         File uploadsDir = new File("uploads");
         File[] files = uploadsDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".jpg"));
 
         if (files != null && files.length > 0) {
+
             ITesseract tesseract = new Tesseract();
             // Set the correct path to the tessdata folder
             tesseract.setDatapath(System.getProperty("user.dir") + File.separator + "tessdata");
@@ -291,7 +336,11 @@ public class PdfToImageConverter {
                 }
 
                 // Save the Word document
-                File outputFile = new File("output_"+fileID+".docx");
+                File outputDir = new File("output");
+                if (!outputDir.exists()) {
+                    outputDir.mkdir();
+                }
+                File outputFile = new File(outputDir, "output_" + fileID + ".docx");
                 try (FileOutputStream out = new FileOutputStream(outputFile)) {
                     document.write(out);
                 }
@@ -304,6 +353,10 @@ public class PdfToImageConverter {
                         System.err.println("Failed to delete image: " + imageFile.getName());
                     }
                 }
+
+                // Delete the .tmp temporary file created to be a placeholder
+//                tempProcessingFile.delete();
+
             } catch (TesseractException | IOException e) {
                 System.err.println("Error during OCR processing: " + e.getMessage());
                 e.printStackTrace();
