@@ -23,13 +23,6 @@
             <version>${spring-boot.version}</version>
         </dependency>
 
-        <!-- Google Cloud Vision -->
-        <dependency>
-            <groupId>com.google.cloud</groupId>
-            <artifactId>spring-cloud-gcp-starter-vision</artifactId>
-            <version>5.11.0</version>
-        </dependency>
-
         <!-- PDF Processing -->
         <dependency>
             <groupId>org.apache.pdfbox</groupId>
