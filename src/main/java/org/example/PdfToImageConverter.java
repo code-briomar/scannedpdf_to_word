@@ -37,7 +37,8 @@ import java.util.concurrent.Executors;
 @RequestMapping("/api")
 @CrossOrigin(origins = "https://scanned-pdf-to-word.lomogan.africa/") // Allow frontend to access API
 public class PdfToImageConverter {
-    private static final ExecutorService executor = Executors.newFixedThreadPool(10);
+    // Store the progress for each fileID
+    private static final Map<String,Integer> progressMap = Collections.synchronizedMap(new HashMap<>());
 
     public static void main(String[] args) {
         SpringApplication.run(PdfToImageConverter.class, args);
@@ -64,7 +65,6 @@ public class PdfToImageConverter {
     public ResponseEntity<Map<String,Object>> uploadPdf(@RequestParam("pdfFile") MultipartFile file) {
         try {
             // Remove all files ending with .tmp in the root folder
-
             Files.list(Paths.get("."))
                  .filter(path -> path.toString().endsWith(".tmp"))
                  .forEach(path -> {
@@ -80,7 +80,7 @@ public class PdfToImageConverter {
 
             new Thread(() -> {
                 try {
-                    convertPdfToImage(pdfFile);
+                    convertPdfToImage(pdfFile,fileID);
                     processImagesForOCR(fileID);
                 } catch (IOException e) {
                     throw new RuntimeException(e);
@@ -253,6 +253,77 @@ public class PdfToImageConverter {
     }
 
     /**
+     * Retrieves the progress of a file being processed.
+     * <p>
+     * This endpoint checks the current progress of a file identified by the given {@code fileID}.
+     * The progress is measured from 0% (processing started) to 100% (processing completed).
+     * If the file is not found or not being processed, an error response is returned.
+     * </p>
+     *
+     * <p><strong>Example Request:</strong></p>
+     * <pre>
+     * GET /api/progress?fileID=1234
+     * </pre>
+     *
+     * <p><strong>Example Responses:</strong></p>
+     * <p><strong>Ongoing Processing:</strong></p>
+     * <pre>
+     * {
+     *   "status": "success",
+     *   "code": 200,
+     *   "progress": 75,
+     *   "message": "Processing progress: 75%"
+     * }
+     * </pre>
+     *
+     * <p><strong>Processing Complete:</strong></p>
+     * <pre>
+     * {
+     *   "status": "success",
+     *   "code": 200,
+     *   "progress": 100,
+     *   "message": "Processing progress: 100%"
+     * }
+     * </pre>
+     *
+     * <p><strong>File Not Found:</strong></p>
+     * <pre>
+     * {
+     *   "status": "error",
+     *   "code": 404,
+     *   "message": "File not found or not being processed."
+     * }
+     * </pre>
+     *
+     * @param fileID The unique identifier of the file being processed.
+     * @return A {@link ResponseEntity} containing:
+     *         <ul>
+     *           <li>If the file is found: HTTP 200 with progress percentage (0-100%).</li>
+     *           <li>If the file is not found: HTTP 404 with an error message.</li>
+     *         </ul>
+     */
+    @GetMapping("/progress")
+    public ResponseEntity<Object> getProgress(@RequestParam("fileID") String fileID) {
+        Integer progress = progressMap.getOrDefault(fileID, -1);
+
+        Map<String, Object> response = new HashMap<>();
+        if (progress == -1) {
+            response.put("status", "error");
+            response.put("code", 404);
+            response.put("message", "File not found or not being processed.");
+        } else {
+            response.put("status", "success");
+            response.put("code", 200);
+            response.put("progress", progress);
+            response.put("message", "Processing progress: " + progress + "%");
+        }
+
+        return ResponseEntity.status(HttpStatus.OK).body(response);
+    }
+
+
+
+    /**
      * Converts a MultipartFile to a temporary File.
      *
      * <p>This method creates a temporary file with a prefix "temp" and
@@ -284,76 +355,47 @@ public class PdfToImageConverter {
      * @param fileID A unique identifier for the output document file name.
      */
     private void processImagesForOCR(String fileID) {
-
         File uploadsDir = new File("uploads");
         File[] files = uploadsDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".jpg"));
 
         if (files != null && files.length > 0) {
-
             ITesseract tesseract = new Tesseract();
-            // Set the correct path to the tessdata folder
             tesseract.setDatapath(System.getProperty("user.dir") + File.separator + "tessdata");
-            tesseract.setPageSegMode(1); // PSM_AUTO for layout analysis
-            tesseract.setOcrEngineMode(1); // Set OCR mode to LSTM
-            //tesseract.setConfigs(Arrays.asList("hocr")); // Generate hOCR output
+            tesseract.setPageSegMode(1);
+            tesseract.setOcrEngineMode(1);
 
             try (XWPFDocument document = new XWPFDocument()) {
-                for (File imageFile : files) {
+                int totalImages = files.length;
+                for (int i = 0; i < totalImages; i++) {
+                    File imageFile = files[i];
                     String result = tesseract.doOCR(imageFile);
 
-                    if (result.isEmpty()) {
-                        System.out.println("OCR returned no text for " + imageFile.getName());
-                    } else {
-                        // Split the result into lines to analyze formatting
-                        String[] lines = result.split("\n");
-                        for (String line : lines) {
-                            XWPFParagraph paragraph = document.createParagraph();
-                            XWPFRun run = paragraph.createRun();
-
-                            // Apply formatting based on simple heuristics
-                            if (line.trim().isEmpty()) {
-                                continue; // Skip empty lines
-                            } else if (line.matches("(?i).*(\\b[A-Z]{2,}\\b).*")) {
-                                //run.setBold(true); // Set bold for potential headings
-                            }
-
-                            // Add text to the run
-                            run.setText(line.trim());
-                            run.setFontSize(12); // Set a default font size
-                            paragraph.setAlignment(ParagraphAlignment.LEFT); // Set alignment
-                        }
-                        System.out.println("Processed image: " + imageFile.getName());
+                    if (!result.isEmpty()) {
+                        XWPFParagraph paragraph = document.createParagraph();
+                        XWPFRun run = paragraph.createRun();
+                        run.setText(result.trim());
+                        run.setFontSize(12);
+                        paragraph.setAlignment(ParagraphAlignment.LEFT);
                     }
+
+                    // Update progress (50% to 100%)
+                    progressMap.put(fileID, 50 + (int) (((i + 1) / (float) totalImages) * 50));
                 }
 
-                // Save the Word document
-                File outputDir = new File("output");
-                if (!outputDir.exists()) {
-                    outputDir.mkdir();
-                }
-                File outputFile = new File(outputDir, "output_" + fileID + ".docx");
+                File outputFile = new File("output/output_" + fileID + ".docx");
                 try (FileOutputStream out = new FileOutputStream(outputFile)) {
                     document.write(out);
                 }
 
-                // Delete the images after processing
+                // Delete images after processing
                 for (File imageFile : files) {
-                    if (imageFile.delete()) {
-                        System.out.println("Deleted image: " + imageFile.getName());
-                    } else {
-                        System.err.println("Failed to delete image: " + imageFile.getName());
-                    }
+                    imageFile.delete();
                 }
 
-                // Delete the .tmp temporary file created to be a placeholder
-//                tempProcessingFile.delete();
-
+                progressMap.put(fileID, 100); // Processing complete
             } catch (TesseractException | IOException e) {
-                System.err.println("Error during OCR processing: " + e.getMessage());
                 e.printStackTrace();
             }
-        } else {
-            System.out.println("No images found for OCR processing.");
         }
     }
 
@@ -367,7 +409,7 @@ public class PdfToImageConverter {
      * @param pdfFile the PDF file to be converted into images
      * @throws IOException if an error occurs while reading the PDF or saving the images
      */
-    private  void convertPdfToImage(File pdfFile) throws IOException {
+    private  void convertPdfToImage(File pdfFile,String fileID) throws IOException {
         PDDocument document = PDDocument.load(pdfFile);
         PDFRenderer pdfRenderer = new PDFRenderer(document);
         File uploadsDir = new File("uploads");
@@ -379,11 +421,16 @@ public class PdfToImageConverter {
 
         int pagesToBeProcessed = Math.min(document.getNumberOfPages(),5); // Limit to 30 on a free tier of some sorts.
 
+        progressMap.put(fileID,0);
+
 
         for (int page = 0; page < pagesToBeProcessed; ++page) {
             BufferedImage bim = pdfRenderer.renderImageWithDPI(page, 300);
             String imagePath = "uploads/page-" + (page + 1) + ".jpg";
             ImageIO.write(bim, "jpg", new File(imagePath));
+
+            // Update progress ( e.g 20% for 5 pages....Something like that )
+            progressMap.put(fileID, (int) (((page+1)/(float)pagesToBeProcessed)*50));
         }
 
         document.close();

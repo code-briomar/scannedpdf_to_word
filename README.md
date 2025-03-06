@@ -1,5 +1,8 @@
+## Regular Features
+Progress bar.
 ## Premium Features
 ---
+
 Batch Processing - convert multiple scanned PDFs at once.
 High-Accuracy OCR - Offer enhanced OCR tech that provides more accurate text recognition.
 Language Support - Provide Support for multiple languages
