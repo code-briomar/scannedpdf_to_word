@@ -35,7 +35,10 @@ import java.util.concurrent.Executors;
 @EnableAsync
 @RestController
 @RequestMapping("/api")
-@CrossOrigin(origins = "https://scanned-pdf-to-word.lomogan.africa/") // Allow frontend to access API
+@CrossOrigin(origins = {
+        "https://scanned-pdf-to-word.lomogan.africa/",
+        "http://127.0.0.1:5500"
+}) // Allow frontend to access API
 public class PdfToImageConverter {
     // Store the progress for each fileID
     private static final Map<String,Integer> progressMap = Collections.synchronizedMap(new HashMap<>());
