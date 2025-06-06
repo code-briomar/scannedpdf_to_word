@@ -1,0 +1,9 @@
+build:
+  apt:
+    packages:
+      - tesseract-ocr
+      - libtesseract-dev
+      - libleptonica-dev
+
+run:
+  web: java -Djava.library.path=/app/.apt/usr/lib/x86_64-linux-gnu:/app/.apt/usr/lib -jar target/scannedpdf_to_word-1.0-SNAPSHOT.jar
