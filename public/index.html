@@ -210,6 +210,36 @@
           </div>
         </div>
 
+        <!-- Unlock Premium Message -->
+        <div id="unlock-section" class="hidden mt-8 text-center">
+          <div
+            class="bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-6"
+          >
+            <i class="fas fa-lock text-yellow-400 text-4xl mb-4"></i>
+            <h3 class="text-xl font-semibold text-white mb-2">
+              Upload Limit Reached
+            </h3>
+            <p class="text-white/80 mb-4">
+              You’ve used your 5 free conversions. Unlock unlimited conversions
+              with a one-time payment.
+            </p>
+            <button
+              onclick="unlockPremium()"
+              class="bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-3 rounded-lg font-medium transition-all duration-300 hover:scale-105"
+            >
+              <i class="fas fa-unlock mr-2"></i> Unlock Now
+            </button>
+
+            <!-- Dev reset -->
+            <button
+              onclick="localStorage.clear(); location.reload();"
+              class="fixed bottom-4 right-4 text-white text-sm bg-black/40 px-3 py-2 rounded"
+            >
+              Reset Usage
+            </button>
+          </div>
+        </div>
+
         <!-- Previous Downloads -->
         <div id="previous-downloads" class="hidden mt-8">
           <div class="flex items-center justify-between mb-2">
@@ -264,6 +294,7 @@
       let socket = null;
 
       // DOM Elements
+      const unlockSection = document.getElementById("unlock-section");
       const fileInput = document.getElementById("file-input");
       const dropZone = document.getElementById("drop-zone");
       const uploadSection = document.getElementById("upload-section");
@@ -404,6 +435,21 @@
         const file = fileInput.files[0];
         if (!file) return;
 
+        // Limiting Upload Counts
+        const uploads = parseInt(
+          localStorage.getItem("uploadCount") || "0",
+          10
+        );
+        const unlocked = localStorage.getItem("premiumUnlocked") === "true";
+
+        if (uploads >= 5 && !unlocked) {
+          showUnlockMessage();
+          return;
+        }
+
+        // Proceed with upload...
+        localStorage.setItem("uploadCount", uploads + 1);
+
         const formData = new FormData();
         formData.append("pdfFile", file);
 
@@ -504,6 +550,38 @@
           socket.close();
         }
       }
+
+      function showUnlockMessage() {
+        uploadSection.classList.add("hidden");
+        unlockSection.classList.remove("hidden");
+      }
+
+      function unlockPremium() {
+        localStorage.setItem("premiumUnlocked", "true");
+        showToast(
+          "Premium unlocked! You now have unlimited conversions.",
+          "success"
+        );
+
+        // Show upload section again
+        unlockSection.classList.add("hidden");
+        uploadSection.classList.remove("hidden");
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        checkApiHealth();
+        loadPreviousDownloads();
+
+        const uploads = parseInt(
+          localStorage.getItem("uploadCount") || "0",
+          10
+        );
+        const unlocked = localStorage.getItem("premiumUnlocked") === "true";
+
+        if (uploads >= 5 && !unlocked) {
+          showUnlockMessage();
+        }
+      });
 
       function loadPreviousDownloads() {
         const section = document.getElementById("previous-downloads");
