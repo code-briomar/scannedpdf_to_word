@@ -343,42 +343,35 @@ public class PdfToImageConverter {
         return tempFile;
     }
 
-    /**
-     * Processes images in the "uploads" directory using Tesseract OCR and saves the extracted text
-     * into a Word document.
-     * <p>
-     * The method:
-     * <ul>
-     *   <li>Scans the "uploads" directory for JPEG images.</li>
-     *   <li>Uses Tesseract OCR to extract text from each image.</li>
-     *   <li>Formats and writes the extracted text into a Word document.</li>
-     *   <li>Deletes the processed images after saving the document.</li>
-     * </ul>
-     *
-     * @param fileID A unique identifier for the output document file name.
-     */
+
     private void processImagesForOCR(String fileID) {
         File uploadsDir = new File("uploads");
         File[] files = uploadsDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".jpg"));
 
         if (files != null && files.length > 0) {
             ITesseract tesseract = new Tesseract();
-            tesseract.setDatapath(System.getProperty("user.dir") + File.separator + "tessdata");
-            tesseract.setPageSegMode(1);
-            tesseract.setOcrEngineMode(1);
+
+            // Configure Tesseract for cross-platform compatibility
+            configureTesseract(tesseract);
 
             try (XWPFDocument document = new XWPFDocument()) {
                 int totalImages = files.length;
                 for (int i = 0; i < totalImages; i++) {
                     File imageFile = files[i];
-                    String result = tesseract.doOCR(imageFile);
 
-                    if (!result.isEmpty()) {
-                        XWPFParagraph paragraph = document.createParagraph();
-                        XWPFRun run = paragraph.createRun();
-                        run.setText(result.trim());
-                        run.setFontSize(12);
-                        paragraph.setAlignment(ParagraphAlignment.LEFT);
+                    try {
+                        String result = tesseract.doOCR(imageFile);
+
+                        if (!result.isEmpty()) {
+                            XWPFParagraph paragraph = document.createParagraph();
+                            XWPFRun run = paragraph.createRun();
+                            run.setText(result.trim());
+                            run.setFontSize(12);
+                            paragraph.setAlignment(ParagraphAlignment.LEFT);
+                        }
+                    } catch (TesseractException e) {
+                        System.err.println("OCR failed for image: " + imageFile.getName() + " - " + e.getMessage());
+                        // Continue processing other images
                     }
 
                     // Update progress (50% to 100%)
@@ -396,8 +389,122 @@ public class PdfToImageConverter {
                 }
 
                 progressMap.put(fileID, 100); // Processing complete
-            } catch (TesseractException | IOException e) {
+            } catch (IOException e) {
+                System.err.println("Error processing OCR: " + e.getMessage());
                 e.printStackTrace();
+            }
+        }
+    }
+
+    /**
+     * Configures Tesseract for cross-platform compatibility
+     * Handles different paths and configurations for Windows vs Linux/Heroku
+     */
+    private void configureTesseract(ITesseract tesseract) {
+        String osName = System.getProperty("os.name").toLowerCase();
+        boolean isWindows = osName.contains("win");
+        boolean isHeroku = System.getenv("DYNO") != null; // Heroku environment detection
+
+        System.out.println("Detected OS: " + osName);
+        System.out.println("Is Windows: " + isWindows);
+        System.out.println("Is Heroku: " + isHeroku);
+
+        if (isHeroku) {
+            // Heroku/Linux environment
+            configureTesseractForHeroku(tesseract);
+        } else if (isWindows) {
+            // Windows development environment
+            configureTesseractForWindows(tesseract);
+        } else {
+            // Other Linux environments
+            configureTesseractForLinux(tesseract);
+        }
+
+        // Common settings
+        tesseract.setPageSegMode(1);
+        tesseract.setOcrEngineMode(1);
+        tesseract.setLanguage("eng");
+    }
+
+    /**
+     * Configure Tesseract for Heroku environment
+     */
+    private void configureTesseractForHeroku(ITesseract tesseract) {
+        System.out.println("Configuring Tesseract for Heroku environment");
+
+        // Try different possible paths for Heroku
+        String[] possibleDataPaths = {
+                "/usr/share/tesseract-ocr/4.00/tessdata",
+                "/usr/share/tesseract-ocr/tessdata",
+                "/usr/share/tessdata",
+                "/app/.apt/usr/share/tesseract-ocr/4.00/tessdata",
+                "/app/.apt/usr/share/tesseract-ocr/tessdata"
+        };
+
+        for (String path : possibleDataPaths) {
+            if (Files.exists(Paths.get(path))) {
+                System.out.println("Found tessdata at: " + path);
+                tesseract.setDatapath(path);
+                break;
+            }
+        }
+
+        // Set library path for Heroku
+        String libraryPath = "/app/.apt/usr/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu";
+        System.setProperty("jna.library.path", libraryPath);
+        System.setProperty("java.library.path", libraryPath);
+
+        // Set environment variables
+        System.setProperty("TESSDATA_PREFIX", "/usr/share/tesseract-ocr/4.00/tessdata");
+    }
+
+    /**
+     * Configure Tesseract for Windows development environment
+     */
+    private void configureTesseractForWindows(ITesseract tesseract) {
+        System.out.println("Configuring Tesseract for Windows environment");
+
+        // Check if tessdata exists in project directory
+        String projectTessdata = System.getProperty("user.dir") + File.separator + "tessdata";
+        if (Files.exists(Paths.get(projectTessdata))) {
+            tesseract.setDatapath(projectTessdata);
+            System.out.println("Using project tessdata: " + projectTessdata);
+        } else {
+            // Try common Windows Tesseract installation paths
+            String[] windowsPaths = {
+                    "C:\\Program Files\\Tesseract-OCR\\tessdata",
+                    "C:\\Program Files (x86)\\Tesseract-OCR\\tessdata",
+                    "C:\\Tesseract-OCR\\tessdata"
+            };
+
+            for (String path : windowsPaths) {
+                if (Files.exists(Paths.get(path))) {
+                    tesseract.setDatapath(path);
+                    System.out.println("Found Windows tessdata at: " + path);
+                    break;
+                }
+            }
+        }
+    }
+
+    /**
+     * Configure Tesseract for general Linux environment
+     */
+    private void configureTesseractForLinux(ITesseract tesseract) {
+        System.out.println("Configuring Tesseract for Linux environment");
+
+        String[] linuxPaths = {
+                "/usr/share/tesseract-ocr/4.00/tessdata",
+                "/usr/share/tesseract-ocr/tessdata",
+                "/usr/share/tessdata",
+                "/usr/local/share/tessdata"
+        };
+
+        for (String path : linuxPaths) {
+            if (Files.exists(Paths.get(path))) {
+                tesseract.setDatapath(path);
+                System.out.println("Found Linux tessdata at: " + path);
+                break;
             }
         }
     }
@@ -412,33 +519,65 @@ public class PdfToImageConverter {
      * @param pdfFile the PDF file to be converted into images
      * @throws IOException if an error occurs while reading the PDF or saving the images
      */
-    private  void convertPdfToImage(File pdfFile,String fileID) throws IOException {
-        PDDocument document = PDDocument.load(pdfFile);
-        PDFRenderer pdfRenderer = new PDFRenderer(document);
-        File uploadsDir = new File("uploads");
+    private void convertPdfToImage(File pdfFile, String fileID) throws IOException {
+        PDDocument document = null;
+        try {
+            document = PDDocument.load(pdfFile);
+            PDFRenderer pdfRenderer = new PDFRenderer(document);
+            File uploadsDir = new File("uploads");
 
-        // Create the directory if it doesn't exist
-        if (!uploadsDir.exists()) {
-            uploadsDir.mkdir();
+            // Create the directory if it doesn't exist
+            if (!uploadsDir.exists()) {
+                uploadsDir.mkdirs();
+            }
+
+            int pagesToBeProcessed = Math.min(document.getNumberOfPages(), 5); // Limit to 5 on a free tier
+            progressMap.put(fileID, 0);
+
+            for (int page = 0; page < pagesToBeProcessed; ++page) {
+                try {
+                    BufferedImage bim = pdfRenderer.renderImageWithDPI(page, 300);
+                    String imagePath = "uploads/page-" + (page + 1) + ".jpg";
+                    ImageIO.write(bim, "jpg", new File(imagePath));
+
+                    // Update progress (0% to 50% for PDF to image conversion)
+                    progressMap.put(fileID, (int) (((page + 1) / (float) pagesToBeProcessed) * 50));
+                } catch (IOException e) {
+                    System.err.println("Error converting page " + (page + 1) + ": " + e.getMessage());
+                    // Continue with other pages
+                }
+            }
+        } finally {
+            if (document != null) {
+                document.close();
+            }
         }
-
-        int pagesToBeProcessed = Math.min(document.getNumberOfPages(),5); // Limit to 30 on a free tier of some sorts.
-
-        progressMap.put(fileID,0);
-
-
-        for (int page = 0; page < pagesToBeProcessed; ++page) {
-            BufferedImage bim = pdfRenderer.renderImageWithDPI(page, 300);
-            String imagePath = "uploads/page-" + (page + 1) + ".jpg";
-            ImageIO.write(bim, "jpg", new File(imagePath));
-
-            // Update progress ( e.g 20% for 5 pages....Something like that )
-            progressMap.put(fileID, (int) (((page+1)/(float)pagesToBeProcessed)*50));
-        }
-
-        document.close();
     }
 
+    /**
+     * Test method to verify Tesseract configuration
+     */
+    public void testTesseractConfiguration() {
+        try {
+            ITesseract tesseract = new Tesseract();
+            configureTesseract(tesseract);
+
+            System.out.println("Tesseract configuration test:");
+//            System.out.println("Data path: " + tesseract.getDatapath());
+//            System.out.println("Language: " + tesseract.getLanguage());
+//            System.out.println("Page Seg Mode: " + tesseract.getPageSegMode());
+//            System.out.println("OCR Engine Mode: " + tesseract.getOcrEngineMode());
+
+            // Try to initialize Tesseract
+            System.out.println("Testing Tesseract initialization...");
+            // This will throw an exception if Tesseract can't be initialized
+            tesseract.doOCR(new File("test")); // This will fail but we catch it
+
+        } catch (Exception e) {
+            System.err.println("Tesseract configuration test failed: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
 
     /**
      * Handles exceptions when a user uploads a file that exceeds the maximum allowed size.
