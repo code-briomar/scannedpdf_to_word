@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PDF to Word Converter</title>
+    <link rel="shortcut icon" href="favicon.ico" type="image/x-icon" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+    <style>
+      body {
+        font-family: "Inter", sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+      }
+
+      .glass-effect {
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+      }
+
+      .progress-ring {
+        transition: stroke-dashoffset 0.35s;
+        transform: rotate(-90deg);
+        transform-origin: 50% 50%;
+      }
+
+      .file-drop-zone {
+        transition: all 0.3s ease;
+        border: 2px dashed rgba(255, 255, 255, 0.3);
+      }
+
+      .file-drop-zone:hover,
+      .file-drop-zone.drag-over {
+        border-color: rgba(79, 172, 254, 0.8);
+        background: rgba(79, 172, 254, 0.1);
+        transform: translateY(-2px);
+      }
+
+      .pulse-animation {
+        animation: pulse 2s infinite;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.5;
+        }
+      }
+
+      .slide-up {
+        animation: slideUp 0.5s ease-out;
+      }
+
+      @keyframes slideUp {
+        from {
+          transform: translateY(20px);
+          opacity: 0;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+    </style>
+  </head>
+  <body class="min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-2xl">
+      <!-- Header -->
+      <div class="text-center mb-8 slide-up">
+        <h1 class="text-4xl font-bold text-white mb-2">
+          <i class="fas fa-file-pdf text-red-400 mr-3"></i>
+          PDF to Word Converter
+        </h1>
+        <p class="text-white/80 text-lg">
+          Transform your scanned PDFs into editable Word documents
+        </p>
+      </div>
+
+      <!-- Main Container -->
+      <div class="glass-effect rounded-2xl p-8 shadow-2xl slide-up">
+        <!-- File Upload Area -->
+        <div id="upload-section">
+          <div
+            class="file-drop-zone rounded-xl p-8 text-center cursor-pointer"
+            id="drop-zone"
+          >
+            <input type="file" id="file-input" accept=".pdf" class="hidden" />
+            <div class="text-6xl text-white/60 mb-4">
+              <i class="fas fa-cloud-upload-alt"></i>
+            </div>
+            <h3 class="text-xl font-semibold text-white mb-2">
+              Drop your PDF here
+            </h3>
+            <p class="text-white/80 mb-4">or click to browse files</p>
+            <button
+              class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg font-medium transition-all duration-300 hover:scale-105"
+            >
+              Choose PDF File
+            </button>
+          </div>
+        </div>
+
+        <!-- File Info -->
+        <div id="file-info" class="hidden mt-6">
+          <div class="bg-white/10 rounded-lg p-4">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-3">
+                <i class="fas fa-file-pdf text-red-400 text-2xl"></i>
+                <div>
+                  <p class="text-white font-medium" id="file-name">
+                    document.pdf
+                  </p>
+                  <p class="text-white/60 text-sm" id="file-size">2.5 MB</p>
+                </div>
+              </div>
+              <button
+                id="remove-file"
+                class="text-red-400 hover:text-red-300 p-2"
+              >
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Progress Section -->
+        <div id="progress-section" class="hidden mt-8">
+          <div class="text-center">
+            <div class="relative inline-block mb-6">
+              <svg class="w-24 h-24">
+                <circle
+                  cx="48"
+                  cy="48"
+                  r="40"
+                  stroke="rgba(255,255,255,0.2)"
+                  stroke-width="8"
+                  fill="none"
+                />
+                <circle
+                  id="progress-circle"
+                  cx="48"
+                  cy="48"
+                  r="40"
+                  stroke="#4facfe"
+                  stroke-width="8"
+                  fill="none"
+                  class="progress-ring"
+                  stroke-dasharray="251.2"
+                  stroke-dashoffset="251.2"
+                />
+              </svg>
+              <div class="absolute inset-0 flex items-center justify-center">
+                <span id="progress-text" class="text-white font-bold text-lg"
+                  >0%</span
+                >
+              </div>
+            </div>
+            <h3 class="text-xl font-semibold text-white mb-2">
+              Processing your PDF
+            </h3>
+            <p class="text-white/80" id="status-message">
+              Initializing conversion...
+            </p>
+          </div>
+        </div>
+
+        <!-- Download Section -->
+        <div id="download-section" class="hidden mt-8 text-center">
+          <button
+            onclick="location.reload()"
+            class="mt-4 text-sm text-blue-400 hover:text-blue-500 transition"
+          >
+            <i class="fas fa-arrow-left mr-1"></i> Convert Another PDF
+          </button>
+
+          <div
+            class="bg-green-500/20 border border-green-500/30 rounded-lg p-6"
+          >
+            <i class="fas fa-check-circle text-green-400 text-4xl mb-4"></i>
+            <h3 class="text-xl font-semibold text-white mb-2">
+              Conversion Complete!
+            </h3>
+            <p class="text-white/80 mb-4">
+              Your Word document is ready for download
+            </p>
+            <a
+              id="download-link"
+              href="#"
+              class="inline-flex items-center bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg font-medium transition-all duration-300 hover:scale-105"
+            >
+              <i class="fas fa-download mr-2"></i>
+              Download Word Document
+            </a>
+          </div>
+        </div>
+
+        <!-- Unlock Premium Message -->
+        <div id="unlock-section" class="hidden mt-8 text-center">
+          <div
+            class="bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-6"
+          >
+            <i class="fas fa-lock text-yellow-400 text-4xl mb-4"></i>
+            <h3 class="text-xl font-semibold text-white mb-2">
+              Upload Limit Reached
+            </h3>
+            <p class="text-white/80 mb-4">
+              You’ve used your 5 free conversions. Unlock unlimited conversions
+              with a one-time payment.
+            </p>
+            <button
+              onclick="unlockPremium()"
+              class="bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-3 rounded-lg font-medium transition-all duration-300 hover:scale-105"
+            >
+              <i class="fas fa-unlock mr-2"></i> Unlock Now
+            </button>
+
+            <!-- Dev reset -->
+            <button
+              onclick="localStorage.clear(); location.reload();"
+              class="fixed bottom-4 right-4 text-white text-sm bg-black/40 px-3 py-2 rounded"
+            >
+              Reset Usage
+            </button>
+          </div>
+        </div>
+
+        <!-- Previous Downloads -->
+        <div id="previous-downloads" class="hidden mt-8">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-white text-lg font-semibold">History</h3>
+            <button
+              id="clear-history"
+              class="text-sm text-rose-600 hover:text-red-600 hover:cursor-pointer transition"
+              onclick="localStorage.removeItem('downloads'); loadPreviousDownloads(); showToast('History cleared', 'success');"
+            >
+              <i class="fas fa-trash-alt mr-1"></i> Clear History
+            </button>
+          </div>
+          <ul id="downloads-list" class="space-y-2 text-white/80"></ul>
+        </div>
+
+        <!-- Submit Button -->
+        <div class="mt-8 flex justify-end">
+          <button
+            id="submit-button"
+            class="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white px-8 py-3 rounded-lg font-medium transition-all duration-300 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed hidden"
+          >
+            <span id="submit-text">Convert to Word</span>
+            <i
+              id="submit-loading"
+              class="fas fa-spinner fa-spin ml-2 hidden"
+            ></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- API Status -->
+      <div class="text-center mt-6">
+        <div
+          id="api-status"
+          class="inline-flex items-center text-white/60 text-sm"
+        >
+          <div
+            class="w-2 h-2 bg-green-400 rounded-full mr-2 pulse-animation"
+          ></div>
+          API Status: Connected
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const dev_mode = true;
+      const API_URL = dev_mode
+        ? "http://localhost:8080/api"
+        : "https://scannedpdf-to-word.duckdns.org/api";
+
+      let fileID = null;
+      let socket = null;
+
+      // DOM Elements
+      const unlockSection = document.getElementById("unlock-section");
+      const fileInput = document.getElementById("file-input");
+      const dropZone = document.getElementById("drop-zone");
+      const uploadSection = document.getElementById("upload-section");
+      const fileInfo = document.getElementById("file-info");
+      const progressSection = document.getElementById("progress-section");
+      const downloadSection = document.getElementById("download-section");
+      const submitButton = document.getElementById("submit-button");
+      const progressCircle = document.getElementById("progress-circle");
+      const progressText = document.getElementById("progress-text");
+      const statusMessage = document.getElementById("status-message");
+      const fileName = document.getElementById("file-name");
+      const fileSize = document.getElementById("file-size");
+      const removeFileBtn = document.getElementById("remove-file");
+      const downloadLink = document.getElementById("download-link");
+      const submitText = document.getElementById("submit-text");
+      const submitLoading = document.getElementById("submit-loading");
+      const apiStatus = document.getElementById("api-status");
+
+      function showToast(message, type = "info") {
+        const colors = {
+          success: "#10B981",
+          error: "#EF4444",
+          info: "#3B82F6",
+          warning: "#F59E0B",
+        };
+
+        Toastify({
+          text: message,
+          duration: 4000,
+          close: true,
+          gravity: "top",
+          position: "right",
+          backgroundColor: colors[type],
+          className: "font-medium",
+          stopOnFocus: true,
+        }).showToast();
+      }
+
+      function updateProgress(percentage) {
+        const circumference = 2 * Math.PI * 40;
+        const offset = circumference - (percentage / 100) * circumference;
+        progressCircle.style.strokeDashoffset = offset;
+        progressText.textContent = `${percentage}%`;
+      }
+
+      let progressRetryCount = 0;
+      const MAX_PROGRESS_RETRIES = 5;
+
+      async function checkProgressLoop() {
+        if (!fileID) {
+          console.warn("No fileID available for progress check.");
+          return;
+        }
+
+        try {
+          const response = await fetch(`${API_URL}/progress?fileID=${fileID}`);
+          const res = await response.json();
+
+          console.log("Progress response:", res);
+
+          if (res.status === "error" && res.code === 404) {
+            // Retry a few times before showing warning
+            if (progressRetryCount < MAX_PROGRESS_RETRIES) {
+              progressRetryCount++;
+              console.log(`Retrying progress check (${progressRetryCount})...`);
+              setTimeout(checkProgressLoop, 2000);
+              return;
+            } else {
+              showToast(
+                "File not found or processing hasn't started.",
+                "warning"
+              );
+              return;
+            }
+          }
+
+          // Reset retry count on success
+          progressRetryCount = 0;
+
+          const progress = res?.progress;
+          const status = res?.status;
+
+          if (status !== "success" || typeof progress !== "number") {
+            console.warn("Unexpected response structure:", res);
+            setTimeout(checkProgressLoop, 2000);
+            return;
+          }
+
+          updateProgress(progress);
+          statusMessage.textContent = res.message || "Processing...";
+
+          if (progress < 100) {
+            setTimeout(checkProgressLoop, 2000);
+          } else {
+            checkStatusAndDownload();
+          }
+        } catch (error) {
+          console.error("Progress check failed:", error);
+          showToast("Failed to check progress", "error");
+        }
+      }
+
+      async function checkStatusAndDownload() {
+        try {
+          const response = await fetch(
+            `${API_URL}/check-status?fileID=${fileID}`
+          );
+          const result = await response.json();
+
+          if (result.status === "success" && result.data?.download_url) {
+            showCompletion(result.data.download_url);
+          } else {
+            // Retry every 2s until it's ready
+            setTimeout(checkStatusAndDownload, 2000);
+          }
+        } catch (error) {
+          console.error("Status check failed:", error);
+          showToast("Failed to check file status", "error");
+        }
+      }
+
+      async function checkApiHealth() {
+        try {
+          const response = await fetch(`${API_URL}/health`);
+          if (response.ok) {
+            apiStatus.innerHTML =
+              '<div class="w-2 h-2 bg-green-400 rounded-full mr-2 pulse-animation"></div>API Status: Connected';
+            return true;
+          }
+        } catch (error) {
+          apiStatus.innerHTML =
+            '<div class="w-2 h-2 bg-red-400 rounded-full mr-2"></div>API Status: Disconnected';
+          return false;
+        }
+      }
+
+      async function uploadFile() {
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        // Limiting Upload Counts
+        const uploads = parseInt(
+          localStorage.getItem("uploadCount") || "0",
+          10
+        );
+        const unlocked = localStorage.getItem("premiumUnlocked") === "true";
+
+        if (uploads >= 5 && !unlocked) {
+          showUnlockMessage();
+          return;
+        }
+
+        // Proceed with upload...
+        localStorage.setItem("uploadCount", uploads + 1);
+
+        const formData = new FormData();
+        formData.append("pdfFile", file);
+
+        submitText.textContent = "Uploading...";
+        submitLoading.classList.remove("hidden");
+        submitButton.disabled = true;
+
+        try {
+          const response = await fetch(`${API_URL}/upload`, {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!response.ok)
+            throw new Error(`Upload failed: ${response.status}`);
+
+          const result = await response.json();
+          fileID = result.data?.fileID;
+
+          showToast(result.message || "File uploaded successfully!", "success");
+
+          fileInfo.classList.add("hidden");
+          submitButton.classList.add("hidden");
+          progressSection.classList.remove("hidden");
+
+          checkProgressLoop(); // Start polling
+        } catch (error) {
+          console.error("Upload error:", error);
+          showToast("Upload failed. Please try again.", "error");
+          resetForm();
+        }
+      }
+
+      function resetForm() {
+        fileInput.value = "";
+        fileID = null;
+
+        // Hide all dynamic sections
+        fileInfo.classList.add("hidden");
+        progressSection.classList.add("hidden");
+        downloadSection.classList.add("hidden");
+        submitButton.classList.add("hidden");
+        submitButton.disabled = false;
+
+        // Reset submit button
+        submitText.textContent = "Convert to Word";
+        submitLoading.classList.add("hidden");
+
+        // Remove file name and size text
+        fileName.textContent = "";
+        fileSize.textContent = "";
+
+        // Reset progress visual
+        updateProgress(0);
+        statusMessage.textContent = "";
+
+        // Close any WebSocket
+        if (socket) {
+          socket.close();
+          socket = null;
+        }
+      }
+
+      function showCompletion(downloadUrl) {
+        const fullDownloadUrl = `${API_URL}${downloadUrl}`;
+
+        progressSection.classList.add("hidden");
+        downloadSection.classList.remove("hidden");
+        downloadLink.href = fullDownloadUrl;
+
+        // Hide the upload section to prevent uploading a new file
+        uploadSection.classList.add("hidden");
+
+        // Auto-download
+        window.location.href = fullDownloadUrl;
+
+        showToast("Conversion completed successfully!", "success");
+
+        // Save to localStorage
+        const file = fileInput.files[0];
+        const downloads = JSON.parse(localStorage.getItem("downloads")) || [];
+
+        // Add new item to beginning
+        downloads.unshift({
+          fileName: file.name,
+          fileID: fileID,
+          downloadUrl: fullDownloadUrl,
+          timestamp: new Date().toISOString(),
+        });
+
+        // Limit to last 10 entries
+        const trimmedDownloads = downloads.slice(0, 10);
+        localStorage.setItem("downloads", JSON.stringify(trimmedDownloads));
+
+        loadPreviousDownloads();
+
+        if (socket) {
+          socket.close();
+        }
+      }
+
+      function showUnlockMessage() {
+        uploadSection.classList.add("hidden");
+        unlockSection.classList.remove("hidden");
+      }
+
+      function unlockPremium() {
+        localStorage.setItem("premiumUnlocked", "true");
+        showToast(
+          "Premium unlocked! You now have unlimited conversions.",
+          "success"
+        );
+
+        // Show upload section again
+        unlockSection.classList.add("hidden");
+        uploadSection.classList.remove("hidden");
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        checkApiHealth();
+        loadPreviousDownloads();
+
+        const uploads = parseInt(
+          localStorage.getItem("uploadCount") || "0",
+          10
+        );
+        const unlocked = localStorage.getItem("premiumUnlocked") === "true";
+
+        if (uploads >= 5 && !unlocked) {
+          showUnlockMessage();
+        }
+      });
+
+      function loadPreviousDownloads() {
+        const section = document.getElementById("previous-downloads");
+        const list = document.getElementById("downloads-list");
+        const downloads = JSON.parse(localStorage.getItem("downloads")) || [];
+
+        if (downloads.length === 0) {
+          section.classList.add("hidden");
+          return;
+        }
+
+        section.classList.remove("hidden");
+        list.innerHTML = "";
+
+        downloads.forEach((d) => {
+          const item = document.createElement("li");
+          item.innerHTML = `
+            <a href="${
+              d.downloadUrl
+            }" target="_blank" class="text-blue-400 hover:underline">
+                ${d.fileName}
+            </a>
+            <span class="text-sm text-white/50 ml-2">(${new Date(
+              d.timestamp
+            ).toLocaleString()})</span>
+        `;
+          list.appendChild(item);
+        });
+      }
+
+      // Call it when page loads
+      document.addEventListener("DOMContentLoaded", () => {
+        checkApiHealth();
+        setInterval(checkApiHealth, 5000);
+        loadPreviousDownloads(); // Load from localStorage
+      });
+
+      function handleFileSelect(file) {
+        fileName.textContent = file.name;
+        fileSize.textContent = formatFileSize(file.size);
+        fileInfo.classList.remove("hidden");
+        submitButton.classList.remove("hidden");
+      }
+
+      function formatFileSize(bytes) {
+        if (bytes === 0) return "0 Bytes";
+        const k = 1024;
+        const sizes = ["Bytes", "KB", "MB", "GB"];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+      }
+
+      dropZone.addEventListener("click", () => fileInput.click());
+
+      dropZone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropZone.classList.add("drag-over");
+      });
+
+      dropZone.addEventListener("dragleave", () => {
+        dropZone.classList.remove("drag-over");
+      });
+
+      dropZone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropZone.classList.remove("drag-over");
+        const files = e.dataTransfer.files;
+        if (files.length > 0 && files[0].type === "application/pdf") {
+          fileInput.files = files;
+          handleFileSelect(files[0]);
+        } else {
+          showToast("Please drop a valid PDF file", "warning");
+        }
+      });
+
+      fileInput.addEventListener("change", (e) => {
+        if (e.target.files.length > 0) {
+          handleFileSelect(e.target.files[0]);
+        }
+      });
+
+      removeFileBtn.addEventListener("click", resetForm);
+      submitButton.addEventListener("click", uploadFile);
+
+      document.addEventListener("DOMContentLoaded", () => {
+        checkApiHealth();
+        setInterval(checkApiHealth, 5000);
+      });
+    </script>
+  </body>
+</html>
